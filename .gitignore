@@ -1,0 +1,54 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.test
+coverage.out
+coverage.html
+
+# Go workspace
+go.work
+go.work.sum
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+
+# Environment and secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Vendor (if not committing)
+# vendor/
+
+# Specs directory (local planning artifacts)
+specs/archive/
+
+# Example bots (external projects)
+examples/
+examples/HomeBots/lettabot/
+examples/HomeBots/nanobot/
+examples/HomeBots/openclaw/*.log
+tmux-server-*.log
