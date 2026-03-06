@@ -75,6 +75,24 @@ func (r *PrincipalRepo) Get(_ context.Context, id string) (*domain.Principal, er
 	return nil, domain.NewAppError(domain.ErrCodeNotFound, fmt.Sprintf("principal not found: %s", id))
 }
 
+// GetByAPIKeyHash finds a principal by the SHA-256 hash of their API key.
+// Returns a NOT_FOUND AppError if no matching principal exists or the hash is empty.
+func (r *PrincipalRepo) GetByAPIKeyHash(_ context.Context, hash string) (*domain.Principal, error) {
+	if hash == "" {
+		return nil, domain.NewAppError(domain.ErrCodeNotFound, "no principal found for api key")
+	}
+	principals, err := r.readAll()
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range principals {
+		if p.APIKeyHash == hash {
+			return p, nil
+		}
+	}
+	return nil, domain.NewAppError(domain.ErrCodeNotFound, "no principal found for api key")
+}
+
 // List returns all principals.
 func (r *PrincipalRepo) List(_ context.Context) ([]*domain.Principal, error) {
 	return r.readAll()

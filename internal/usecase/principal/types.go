@@ -13,6 +13,7 @@ import (
 type Repository interface {
 	Save(ctx context.Context, p *domain.Principal) error
 	Get(ctx context.Context, id string) (*domain.Principal, error)
+	GetByAPIKeyHash(ctx context.Context, hash string) (*domain.Principal, error)
 	List(ctx context.Context) ([]*domain.Principal, error)
 	Update(ctx context.Context, p *domain.Principal) error
 }
@@ -31,6 +32,10 @@ type Service interface {
 	GetOrCreate(ctx context.Context, claims apimw.JWTClaims) (*domain.Principal, error)
 	WhoAmI(ctx context.Context, p *domain.Principal) (*WhoAmIResponse, error)
 	List(ctx context.Context, caller *domain.Principal) ([]*domain.Principal, error)
+	Create(ctx context.Context, caller *domain.Principal, req CreateRequest) (*CreateResponse, error)
+	ReissueAPIKey(ctx context.Context, caller *domain.Principal, id string) (string, error)
+	RevokeAPIKey(ctx context.Context, caller *domain.Principal, id string) error
+	AuthenticateByAPIKey(ctx context.Context, apiKey string) (*domain.Principal, error)
 }
 
 // WhoAmIResponse carries identity, store memberships, and derived capabilities.
@@ -44,4 +49,21 @@ type WhoAmIResponse struct {
 type StoreMembership struct {
 	StoreName string
 	Role      domain.StoreRole
+}
+
+// CreateRequest carries the fields needed to create a new principal.
+// ID is optional; a random identifier is generated when empty.
+type CreateRequest struct {
+	ID    string
+	Name  string
+	Type  domain.PrincipalType
+	Role  domain.InstanceRole
+	Email string
+}
+
+// CreateResponse carries the newly created principal and its plaintext API key.
+// The APIKey is returned only once and is never stored in plaintext.
+type CreateResponse struct {
+	Principal *domain.Principal
+	APIKey    string
 }

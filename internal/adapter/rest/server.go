@@ -40,6 +40,9 @@ type ServerOptions struct {
 	RateLimitRPS float64
 	// RateLimitBurst is the maximum burst size for the token bucket.
 	RateLimitBurst int
+	// AuthHandler registers unauthenticated auth routes (e.g. POST /auth/token).
+	// nil = no auth routes registered.
+	AuthHandler *AuthHandler
 }
 
 // NewRouter builds and returns the Chi router with all middleware and routes wired up.
@@ -61,6 +64,11 @@ func NewRouter(jwtSecret []byte, lookup apimw.PrincipalLookup, svc SystemService
 	// Rate limiting: applied at the outer level before authentication.
 	if opts.RateLimitRPS > 0 {
 		r.Use(apimw.RateLimitMiddleware(opts.RateLimitRPS, opts.RateLimitBurst))
+	}
+
+	// Unauthenticated auth routes (e.g. POST /auth/token).
+	if opts.AuthHandler != nil {
+		opts.AuthHandler.Register(r)
 	}
 
 	// Authenticated API routes.

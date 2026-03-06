@@ -51,6 +51,7 @@ type AuthConfig struct {
 	Secret    string // HS256 — load from env only, never from config file.
 	PublicKey string `koanf:"public_key"` // RS256 — path to PEM file.
 	Issuer    string
+	TokenTTL  string `koanf:"token_ttl"` // Duration string for issued JWT lifetime (e.g. "24h"). Default: "24h".
 }
 
 // EmbeddingConfig holds embedding provider settings.
@@ -129,6 +130,7 @@ type TelemetryConfig struct {
 // configDefaults returns default configuration values keyed by koanf dot-path.
 func configDefaults() map[string]any {
 	return map[string]any{
+		"auth.token_ttl":                                "24h",
 		"server.host":                                   "0.0.0.0",
 		"server.port":                                   8443,
 		"server.tls.min_version":                        "1.2",

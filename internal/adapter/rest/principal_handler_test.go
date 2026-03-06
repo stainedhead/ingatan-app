@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -18,9 +19,13 @@ import (
 
 // mockPrincipalService is a test double for principaluc.Service.
 type mockPrincipalService struct {
-	getOrCreateFn func(ctx context.Context, claims apimw.JWTClaims) (*domain.Principal, error)
-	whoAmIFn      func(ctx context.Context, p *domain.Principal) (*principaluc.WhoAmIResponse, error)
-	listFn        func(ctx context.Context, caller *domain.Principal) ([]*domain.Principal, error)
+	getOrCreateFn       func(ctx context.Context, claims apimw.JWTClaims) (*domain.Principal, error)
+	whoAmIFn            func(ctx context.Context, p *domain.Principal) (*principaluc.WhoAmIResponse, error)
+	listFn              func(ctx context.Context, caller *domain.Principal) ([]*domain.Principal, error)
+	createFn            func(ctx context.Context, caller *domain.Principal, req principaluc.CreateRequest) (*principaluc.CreateResponse, error)
+	reissueAPIKeyFn     func(ctx context.Context, caller *domain.Principal, id string) (string, error)
+	revokeAPIKeyFn      func(ctx context.Context, caller *domain.Principal, id string) error
+	authenticateByKeyFn func(ctx context.Context, apiKey string) (*domain.Principal, error)
 }
 
 func (m *mockPrincipalService) GetOrCreate(ctx context.Context, claims apimw.JWTClaims) (*domain.Principal, error) {
@@ -33,6 +38,22 @@ func (m *mockPrincipalService) WhoAmI(ctx context.Context, p *domain.Principal) 
 
 func (m *mockPrincipalService) List(ctx context.Context, caller *domain.Principal) ([]*domain.Principal, error) {
 	return m.listFn(ctx, caller)
+}
+
+func (m *mockPrincipalService) Create(ctx context.Context, caller *domain.Principal, req principaluc.CreateRequest) (*principaluc.CreateResponse, error) {
+	return m.createFn(ctx, caller, req)
+}
+
+func (m *mockPrincipalService) ReissueAPIKey(ctx context.Context, caller *domain.Principal, id string) (string, error) {
+	return m.reissueAPIKeyFn(ctx, caller, id)
+}
+
+func (m *mockPrincipalService) RevokeAPIKey(ctx context.Context, caller *domain.Principal, id string) error {
+	return m.revokeAPIKeyFn(ctx, caller, id)
+}
+
+func (m *mockPrincipalService) AuthenticateByAPIKey(ctx context.Context, apiKey string) (*domain.Principal, error) {
+	return m.authenticateByKeyFn(ctx, apiKey)
 }
 
 // testPrincipal returns a sample domain.Principal for use in tests.
@@ -113,4 +134,80 @@ func TestListPrincipals_Forbidden(t *testing.T) {
 	newPrincipalTestRouter(svc).ServeHTTP(rr, newReq(http.MethodGet, "/api/v1/principals", nil))
 
 	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
+
+func TestCreatePrincipal_Success(t *testing.T) {
+	p := testPrincipal()
+	svc := &mockPrincipalService{
+		createFn: func(_ context.Context, _ *domain.Principal, req principaluc.CreateRequest) (*principaluc.CreateResponse, error) {
+			assert.Equal(t, "Bob", req.Name)
+			return &principaluc.CreateResponse{Principal: p, APIKey: "igt_testkey"}, nil
+		},
+	}
+
+	body := bytes.NewBufferString(`{"Name":"Bob","Type":"human","Role":"user"}`)
+	rr := httptest.NewRecorder()
+	newPrincipalTestRouter(svc).ServeHTTP(rr, newReq(http.MethodPost, "/api/v1/principals", body))
+
+	require.Equal(t, http.StatusCreated, rr.Code)
+	var resp map[string]any
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	assert.Equal(t, "igt_testkey", resp["api_key"])
+}
+
+func TestCreatePrincipal_Forbidden(t *testing.T) {
+	svc := &mockPrincipalService{
+		createFn: func(_ context.Context, _ *domain.Principal, _ principaluc.CreateRequest) (*principaluc.CreateResponse, error) {
+			return nil, domain.NewAppError(domain.ErrCodeForbidden, "admin only")
+		},
+	}
+
+	rr := httptest.NewRecorder()
+	newPrincipalTestRouter(svc).ServeHTTP(rr, newReq(http.MethodPost, "/api/v1/principals", bytes.NewBufferString(`{"Name":"Bob"}`)))
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
+
+func TestReissueAPIKey_Success(t *testing.T) {
+	svc := &mockPrincipalService{
+		reissueAPIKeyFn: func(_ context.Context, _ *domain.Principal, id string) (string, error) {
+			assert.Equal(t, "bob", id)
+			return "igt_newkey", nil
+		},
+	}
+
+	rr := httptest.NewRecorder()
+	newPrincipalTestRouter(svc).ServeHTTP(rr, newReq(http.MethodPost, "/api/v1/principals/bob/api-key", nil))
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var resp map[string]any
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	assert.Equal(t, "igt_newkey", resp["api_key"])
+}
+
+func TestRevokeAPIKey_Success(t *testing.T) {
+	svc := &mockPrincipalService{
+		revokeAPIKeyFn: func(_ context.Context, _ *domain.Principal, id string) error {
+			assert.Equal(t, "bob", id)
+			return nil
+		},
+	}
+
+	rr := httptest.NewRecorder()
+	newPrincipalTestRouter(svc).ServeHTTP(rr, newReq(http.MethodDelete, "/api/v1/principals/bob/api-key", nil))
+
+	assert.Equal(t, http.StatusNoContent, rr.Code)
+}
+
+func TestRevokeAPIKey_NotFound(t *testing.T) {
+	svc := &mockPrincipalService{
+		revokeAPIKeyFn: func(_ context.Context, _ *domain.Principal, _ string) error {
+			return domain.NewAppError(domain.ErrCodeNotFound, "principal not found")
+		},
+	}
+
+	rr := httptest.NewRecorder()
+	newPrincipalTestRouter(svc).ServeHTTP(rr, newReq(http.MethodDelete, "/api/v1/principals/nobody/api-key", nil))
+
+	assert.Equal(t, http.StatusNotFound, rr.Code)
 }

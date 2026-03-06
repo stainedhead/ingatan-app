@@ -191,6 +191,19 @@ func run(configPath string) error {
 		}
 	}()
 
+	// Auth handler: POST /auth/token — only enabled when a JWT secret is configured.
+	if jwtSecret != nil {
+		tokenTTL := 24 * time.Hour
+		if cfg.Auth.TokenTTL != "" {
+			if d, err := time.ParseDuration(cfg.Auth.TokenTTL); err == nil {
+				tokenTTL = d
+			} else {
+				slog.Warn("invalid auth.token_ttl — using default 24h", "value", cfg.Auth.TokenTTL)
+			}
+		}
+		routerOpts.AuthHandler = rest.NewAuthHandler(principalSvc, jwtSecret, tokenTTL)
+	}
+
 	router := rest.NewRouter(jwtSecret, lookup, sysSvc, routerOpts,
 		memoryHandler, searchHandler, ingestHandler,
 		storeHandler, principalHandler, conversationHandler,

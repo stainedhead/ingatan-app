@@ -43,6 +43,18 @@ func (m *mockPrincipalRepo) List(_ context.Context) ([]*domain.Principal, error)
 	return result, nil
 }
 
+func (m *mockPrincipalRepo) GetByAPIKeyHash(_ context.Context, hash string) (*domain.Principal, error) {
+	if hash == "" {
+		return nil, domain.NewAppError(domain.ErrCodeNotFound, "no principal found for api key")
+	}
+	for _, p := range m.principals {
+		if p.APIKeyHash == hash {
+			return p, nil
+		}
+	}
+	return nil, domain.NewAppError(domain.ErrCodeNotFound, "no principal found for api key")
+}
+
 func (m *mockPrincipalRepo) Update(_ context.Context, p *domain.Principal) error {
 	if _, ok := m.principals[p.ID]; !ok {
 		return domain.NewAppError(domain.ErrCodeNotFound, "principal not found: "+p.ID)
@@ -243,4 +255,186 @@ func TestList_NonAdmin_ReturnsForbidden(t *testing.T) {
 	var appErr *domain.AppError
 	require.True(t, errors.As(err, &appErr))
 	assert.Equal(t, domain.ErrCodeForbidden, appErr.Code)
+}
+
+// --- Create ---
+
+func TestCreate_Admin_CreatesPrincipalAndReturnsAPIKey(t *testing.T) {
+	repo := newMockPrincipalRepo()
+	storeRepo := newMockStoreRepo()
+	svc := NewService(repo, storeRepo)
+
+	admin := &domain.Principal{ID: "admin-1", Role: domain.InstanceRoleAdmin}
+	req := CreateRequest{
+		ID:   "new-user",
+		Name: "New User",
+		Type: domain.PrincipalTypeHuman,
+		Role: domain.InstanceRoleUser,
+	}
+
+	resp, err := svc.Create(context.Background(), admin, req)
+	require.NoError(t, err)
+
+	assert.Equal(t, "new-user", resp.Principal.ID)
+	assert.NotEmpty(t, resp.APIKey, "plaintext API key should be returned")
+	assert.True(t, len(resp.APIKey) > 10, "API key should be reasonably long")
+	assert.NotEmpty(t, resp.Principal.APIKeyHash, "hash should be stored")
+	assert.NotEqual(t, resp.APIKey, resp.Principal.APIKeyHash, "plaintext must differ from hash")
+
+	// Personal store auto-created.
+	_, exists := storeRepo.stores["new-user"]
+	assert.True(t, exists)
+}
+
+func TestCreate_NonAdmin_ReturnsForbidden(t *testing.T) {
+	repo := newMockPrincipalRepo()
+	storeRepo := newMockStoreRepo()
+	svc := NewService(repo, storeRepo)
+
+	caller := &domain.Principal{ID: "alice-id", Role: domain.InstanceRoleUser}
+
+	_, err := svc.Create(context.Background(), caller, CreateRequest{Name: "Bob"})
+	require.Error(t, err)
+
+	var appErr *domain.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, domain.ErrCodeForbidden, appErr.Code)
+}
+
+func TestCreate_GeneratesIDWhenEmpty(t *testing.T) {
+	repo := newMockPrincipalRepo()
+	storeRepo := newMockStoreRepo()
+	svc := NewService(repo, storeRepo)
+
+	admin := &domain.Principal{ID: "admin-1", Role: domain.InstanceRoleAdmin}
+	resp, err := svc.Create(context.Background(), admin, CreateRequest{
+		Name: "Auto ID User",
+		Type: domain.PrincipalTypeHuman,
+		Role: domain.InstanceRoleUser,
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, resp.Principal.ID)
+}
+
+// --- ReissueAPIKey ---
+
+func TestReissueAPIKey_Admin_ReturnsNewKey(t *testing.T) {
+	repo := newMockPrincipalRepo()
+	storeRepo := newMockStoreRepo()
+	svc := NewService(repo, storeRepo)
+
+	admin := &domain.Principal{ID: "admin-1", Role: domain.InstanceRoleAdmin}
+	// Create principal first.
+	resp, err := svc.Create(context.Background(), admin, CreateRequest{
+		ID: "bob", Name: "Bob", Type: domain.PrincipalTypeHuman, Role: domain.InstanceRoleUser,
+	})
+	require.NoError(t, err)
+	oldKey := resp.APIKey
+	oldHash := resp.Principal.APIKeyHash
+
+	newKey, err := svc.ReissueAPIKey(context.Background(), admin, "bob")
+	require.NoError(t, err)
+
+	assert.NotEmpty(t, newKey)
+	assert.NotEqual(t, oldKey, newKey, "re-issued key must differ")
+	assert.NotEqual(t, oldHash, repo.principals["bob"].APIKeyHash, "hash must be updated")
+}
+
+func TestReissueAPIKey_NonAdmin_ReturnsForbidden(t *testing.T) {
+	repo := newMockPrincipalRepo()
+	storeRepo := newMockStoreRepo()
+	svc := NewService(repo, storeRepo)
+
+	caller := &domain.Principal{ID: "alice-id", Role: domain.InstanceRoleUser}
+	_, err := svc.ReissueAPIKey(context.Background(), caller, "bob")
+	require.Error(t, err)
+
+	var appErr *domain.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, domain.ErrCodeForbidden, appErr.Code)
+}
+
+// --- RevokeAPIKey ---
+
+func TestRevokeAPIKey_Admin_ClearsHash(t *testing.T) {
+	repo := newMockPrincipalRepo()
+	storeRepo := newMockStoreRepo()
+	svc := NewService(repo, storeRepo)
+
+	admin := &domain.Principal{ID: "admin-1", Role: domain.InstanceRoleAdmin}
+	_, err := svc.Create(context.Background(), admin, CreateRequest{
+		ID: "bob", Name: "Bob", Type: domain.PrincipalTypeHuman, Role: domain.InstanceRoleUser,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, repo.principals["bob"].APIKeyHash)
+
+	require.NoError(t, svc.RevokeAPIKey(context.Background(), admin, "bob"))
+	assert.Empty(t, repo.principals["bob"].APIKeyHash, "hash should be cleared after revoke")
+}
+
+func TestRevokeAPIKey_NonAdmin_ReturnsForbidden(t *testing.T) {
+	repo := newMockPrincipalRepo()
+	storeRepo := newMockStoreRepo()
+	svc := NewService(repo, storeRepo)
+
+	caller := &domain.Principal{ID: "alice-id", Role: domain.InstanceRoleUser}
+	err := svc.RevokeAPIKey(context.Background(), caller, "bob")
+	require.Error(t, err)
+
+	var appErr *domain.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, domain.ErrCodeForbidden, appErr.Code)
+}
+
+// --- AuthenticateByAPIKey ---
+
+func TestAuthenticateByAPIKey_ValidKey_ReturnsPrincipal(t *testing.T) {
+	repo := newMockPrincipalRepo()
+	storeRepo := newMockStoreRepo()
+	svc := NewService(repo, storeRepo)
+
+	admin := &domain.Principal{ID: "admin-1", Role: domain.InstanceRoleAdmin}
+	resp, err := svc.Create(context.Background(), admin, CreateRequest{
+		ID: "alice", Name: "Alice", Type: domain.PrincipalTypeHuman, Role: domain.InstanceRoleUser,
+	})
+	require.NoError(t, err)
+
+	p, err := svc.AuthenticateByAPIKey(context.Background(), resp.APIKey)
+	require.NoError(t, err)
+	assert.Equal(t, "alice", p.ID)
+}
+
+func TestAuthenticateByAPIKey_InvalidKey_ReturnsUnauthorized(t *testing.T) {
+	repo := newMockPrincipalRepo()
+	storeRepo := newMockStoreRepo()
+	svc := NewService(repo, storeRepo)
+
+	_, err := svc.AuthenticateByAPIKey(context.Background(), "igt_notavalidkey")
+	require.Error(t, err)
+
+	var appErr *domain.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, domain.ErrCodeUnauthorized, appErr.Code)
+}
+
+func TestAuthenticateByAPIKey_RevokedKey_ReturnsUnauthorized(t *testing.T) {
+	repo := newMockPrincipalRepo()
+	storeRepo := newMockStoreRepo()
+	svc := NewService(repo, storeRepo)
+
+	admin := &domain.Principal{ID: "admin-1", Role: domain.InstanceRoleAdmin}
+	resp, err := svc.Create(context.Background(), admin, CreateRequest{
+		ID: "alice", Name: "Alice", Type: domain.PrincipalTypeHuman, Role: domain.InstanceRoleUser,
+	})
+	require.NoError(t, err)
+	savedKey := resp.APIKey
+
+	require.NoError(t, svc.RevokeAPIKey(context.Background(), admin, "alice"))
+
+	_, err = svc.AuthenticateByAPIKey(context.Background(), savedKey)
+	require.Error(t, err)
+
+	var appErr *domain.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, domain.ErrCodeUnauthorized, appErr.Code)
 }

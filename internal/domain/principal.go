@@ -29,6 +29,7 @@ type Principal struct {
 	Type       PrincipalType
 	Email      string // Empty for agents.
 	Role       InstanceRole
+	APIKeyHash string // SHA-256 hex hash of the API key; empty = revoked / not set.
 	CreatedAt  time.Time
 	LastSeenAt time.Time
 }

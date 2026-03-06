@@ -31,6 +31,22 @@ func (m *mockMCPPrincipalService) List(ctx context.Context, caller *domain.Princ
 	return m.listFn(ctx, caller)
 }
 
+func (m *mockMCPPrincipalService) Create(_ context.Context, _ *domain.Principal, _ principaluc.CreateRequest) (*principaluc.CreateResponse, error) {
+	return nil, nil
+}
+
+func (m *mockMCPPrincipalService) ReissueAPIKey(_ context.Context, _ *domain.Principal, _ string) (string, error) {
+	return "", nil
+}
+
+func (m *mockMCPPrincipalService) RevokeAPIKey(_ context.Context, _ *domain.Principal, _ string) error {
+	return nil
+}
+
+func (m *mockMCPPrincipalService) AuthenticateByAPIKey(_ context.Context, _ string) (*domain.Principal, error) {
+	return nil, nil
+}
+
 // samplePrincipal returns a reusable test domain.Principal.
 func samplePrincipal() *domain.Principal {
 	return &domain.Principal{
