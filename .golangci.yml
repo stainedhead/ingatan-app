@@ -5,10 +5,20 @@ run:
 
 linters:
   enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
     - misspell
     - gocritic
     - bodyclose
     - errorlint
+  exclusions:
+    rules:
+      - linters:
+          - bodyclose
+        path: _test\.go
 
 formatters:
   enable:
@@ -20,7 +30,6 @@ settings:
     enabled-tags:
       - diagnostic
       - style
-      - performance
 
 issues:
   max-issues-per-linter: 0

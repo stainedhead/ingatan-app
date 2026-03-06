@@ -161,11 +161,27 @@ func (r *ChunkRepo) GetChunks(_ context.Context, store, memoryID string) ([]*dom
 	return chunks, nil
 }
 
-// GetChunkByID looks up a single chunk by its ID.
-// NOTE: M1 stub — returns ErrNotFound unconditionally. A proper implementation
-// requires a chunk-ID-to-memory-ID index that will be built in M2 alongside the
-// BM25/HNSW indexes. The core CRUD operations do not call this method.
-func (r *ChunkRepo) GetChunkByID(_ context.Context, _ string, _ string) (*domain.MemoryChunk, error) {
+// GetChunkByID looks up a single chunk by its ID within the given store.
+// It scans all chunk files in the store's memories directory to find the matching chunk.
+func (r *ChunkRepo) GetChunkByID(_ context.Context, store, chunkID string) (*domain.MemoryChunk, error) {
+	paths, err := r.fs.List(memoriesDir(store))
+	if err != nil {
+		return nil, fmt.Errorf("storage: list chunk files: %w", err)
+	}
+	for _, p := range paths {
+		if !strings.HasSuffix(p, "-chunks.json") {
+			continue
+		}
+		var chunks []*domain.MemoryChunk
+		if err := r.fs.Read(p, &chunks); err != nil {
+			continue
+		}
+		for _, c := range chunks {
+			if c.ChunkID == chunkID {
+				return c, nil
+			}
+		}
+	}
 	return nil, ErrNotFound
 }
 
