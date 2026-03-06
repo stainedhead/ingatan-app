@@ -43,8 +43,8 @@ dist/
 # Vendor (if not committing)
 # vendor/
 
-# Specs directory (local planning artifacts)
-specs/archive/
+# Specs directory (local planning artifacts — not committed)
+specs/
 
 # Example bots (external projects)
 examples/
