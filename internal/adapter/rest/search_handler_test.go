@@ -36,7 +36,7 @@ func (m *searchMockService) Similar(ctx context.Context, req memoryuc.SimilarReq
 }
 
 func newSearchTestRouter(svc memoryuc.Service) http.Handler {
-	return NewRouter(testSecret, testLookup, &mockSystemService{}, NewSearchHandler(svc))
+	return NewRouter(testSecret, testLookup, &mockSystemService{}, ServerOptions{}, NewSearchHandler(svc))
 }
 
 func TestSearchHandler_Search_OK(t *testing.T) {

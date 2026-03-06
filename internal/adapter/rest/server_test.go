@@ -48,7 +48,7 @@ func validToken() string {
 }
 
 func TestHealth_WithValidJWT(t *testing.T) {
-	r := NewRouter(testSecret, testLookup, &mockSystemService{})
+	r := NewRouter(testSecret, testLookup, &mockSystemService{}, ServerOptions{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	req.Header.Set("Authorization", "Bearer "+validToken())
@@ -62,7 +62,7 @@ func TestHealth_WithValidJWT(t *testing.T) {
 }
 
 func TestHealth_WithoutJWT(t *testing.T) {
-	r := NewRouter(testSecret, testLookup, &mockSystemService{})
+	r := NewRouter(testSecret, testLookup, &mockSystemService{}, ServerOptions{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	rr := httptest.NewRecorder()
@@ -72,7 +72,7 @@ func TestHealth_WithoutJWT(t *testing.T) {
 }
 
 func TestHealth_NoAuth_DevMode(t *testing.T) {
-	r := NewRouter(nil, nil, &mockSystemService{})
+	r := NewRouter(nil, nil, &mockSystemService{}, ServerOptions{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	rr := httptest.NewRecorder()

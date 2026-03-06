@@ -18,6 +18,7 @@ import (
 	"github.com/stainedhead/ingatan/internal/adapter/rest"
 	apimw "github.com/stainedhead/ingatan/internal/adapter/rest/middleware"
 	"github.com/stainedhead/ingatan/internal/domain"
+	"github.com/stainedhead/ingatan/internal/infrastructure/backup"
 	"github.com/stainedhead/ingatan/internal/infrastructure/config"
 	"github.com/stainedhead/ingatan/internal/infrastructure/embed"
 	"github.com/stainedhead/ingatan/internal/infrastructure/index"
@@ -40,16 +41,23 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
+	if err := run(configPath); err != nil {
+		slog.Error("server failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+// run is the real entry point. Separating it from main lets defers execute
+// before os.Exit is called (in particular the OTel provider shutdown).
+func run(configPath string) error {
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
-		slog.Error("failed to load config", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	dataDir := expandHome(cfg.DataDir)
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		slog.Error("failed to create data directory", "path", dataDir, "error", err)
-		os.Exit(1)
+		return fmt.Errorf("create data directory %s: %w", dataDir, err)
 	}
 
 	// Infrastructure: storage
@@ -139,6 +147,9 @@ func main() {
 	// Use case: conversation service.
 	conversationSvc := conversationuc.NewService(conversationRepo, msgRepo, llmProvider, memorySaverAdapt, autoSummCfg)
 
+	// Backup providers from config.
+	backupProviders := buildBackupProviders(cfg.Backup)
+
 	// Adapter: REST handlers
 	memoryHandler := rest.NewMemoryHandler(memorySvc)
 	searchHandler := rest.NewSearchHandler(memorySvc)
@@ -146,6 +157,7 @@ func main() {
 	storeHandler := rest.NewStoreHandler(storeSvc)
 	principalHandler := rest.NewPrincipalHandler(principalSvc)
 	conversationHandler := rest.NewConversationHandler(conversationSvc)
+	backupHandler := rest.NewBackupHandler(backupProviders, dataDir)
 
 	// Adapter: MCP server + all tools
 	mcpSrv := server.NewMCPServer("ingatan", version)
@@ -170,13 +182,29 @@ func main() {
 		return principalSvc.GetOrCreate(ctx, claims)
 	}
 
-	router := rest.NewRouter(jwtSecret, lookup, sysSvc, memoryHandler, searchHandler, ingestHandler, storeHandler, principalHandler, conversationHandler)
+	// Build router options: wire OTel tracing and rate limiting from config.
+	// otelShutdown is always non-nil; defers correctly because run() returns normally.
+	routerOpts, otelShutdown := buildRouterOpts(cfg)
+	defer func() {
+		if shutdownErr := otelShutdown(context.Background()); shutdownErr != nil {
+			slog.Warn("OTel provider shutdown error", "error", shutdownErr)
+		}
+	}()
+
+	router := rest.NewRouter(jwtSecret, lookup, sysSvc, routerOpts,
+		memoryHandler, searchHandler, ingestHandler,
+		storeHandler, principalHandler, conversationHandler,
+		backupHandler,
+	)
 	router.Mount("/mcp", mcpHTTP)
+
+	// Slog request logger wraps the full router.
+	loggedRouter := apimw.SlogLogger(slog.Default())(router)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      router,
+		Handler:      loggedRouter,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -189,20 +217,55 @@ func main() {
 		if cfg.Server.TLS.MinVersion == "1.3" {
 			tlsCfg.MinVersion = tls.VersionTLS13
 		}
+		// mTLS: load client CA if configured.
+		if cfg.Server.TLS.ClientCA != "" {
+			caPool, caErr := apimw.LoadClientCA(cfg.Server.TLS.ClientCA)
+			if caErr != nil {
+				return fmt.Errorf("load client CA %s: %w", cfg.Server.TLS.ClientCA, caErr)
+			}
+			apimw.ApplyClientAuth(tlsCfg, apimw.ClientAuthRequired, caPool)
+			slog.Info("mTLS enabled — client certificates required", "ca_file", cfg.Server.TLS.ClientCA)
+		}
+
 		srv.TLSConfig = tlsCfg
 
 		slog.Info("starting ingatan server (TLS)", "addr", addr, "version", version)
-		if err := srv.ListenAndServeTLS(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile); err != nil {
-			slog.Error("server failed", "error", err)
-			os.Exit(1)
-		}
-	} else {
-		slog.Info("starting ingatan server (plain HTTP — no TLS configured)", "addr", addr, "version", version)
-		if err := srv.ListenAndServe(); err != nil {
-			slog.Error("server failed", "error", err)
-			os.Exit(1)
+		return srv.ListenAndServeTLS(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
+	}
+
+	slog.Info("starting ingatan server (plain HTTP — no TLS configured)", "addr", addr, "version", version)
+	return srv.ListenAndServe()
+}
+
+// buildBackupProviders constructs backup.Backuper instances from config.
+// Returns an empty slice if no backup is configured. Logs a warning on error.
+func buildBackupProviders(cfg config.BackupConfig) []backup.Backuper {
+	var providers []backup.Backuper
+
+	if cfg.S3.Enabled {
+		s3b, err := backup.NewS3Backup(backup.S3Config{
+			Bucket: cfg.S3.Bucket,
+			Region: cfg.S3.Region,
+			Prefix: cfg.S3.Prefix,
+		})
+		if err != nil {
+			slog.Warn("S3 backup disabled — configuration error", "error", err)
+		} else {
+			providers = append(providers, s3b)
+			slog.Info("S3 backup enabled", "bucket", cfg.S3.Bucket, "prefix", cfg.S3.Prefix)
 		}
 	}
+
+	if cfg.Git.Enabled {
+		gitb := backup.NewGitBackup(backup.GitConfig{
+			RemoteURL: cfg.Git.RemoteURL,
+			Branch:    cfg.Git.Branch,
+		})
+		providers = append(providers, gitb)
+		slog.Info("git backup enabled", "remote", cfg.Git.RemoteURL)
+	}
+
+	return providers
 }
 
 // memorySaverAdapter adapts memoryuc.Service to the conversationuc.MemorySaver interface,
@@ -252,6 +315,41 @@ func (s *systemService) Health() *rest.HealthStatus {
 		Status:  "ok",
 		Version: version,
 	}
+}
+
+// buildRouterOpts constructs ServerOptions from config and returns a shutdown
+// function for any OTel provider that was initialised. The shutdown function is
+// always non-nil and safe to call even when OTel is disabled.
+func buildRouterOpts(cfg *config.Config) (rest.ServerOptions, func(context.Context) error) {
+	opts := rest.ServerOptions{}
+	shutdown := func(_ context.Context) error { return nil }
+
+	if cfg.Telemetry.OTelEndpoint != "" || cfg.Telemetry.ServiceName != "" {
+		otelCfg := apimw.OTelConfig{
+			Endpoint:    cfg.Telemetry.OTelEndpoint,
+			ServiceName: cfg.Telemetry.ServiceName,
+		}
+		provider, err := apimw.NewOTelProvider(otelCfg)
+		if err != nil {
+			slog.Warn("failed to initialise OTel provider — tracing disabled", "error", err)
+		} else {
+			opts.OTelTracer = provider.Tracer("ingatan")
+			shutdown = provider.Shutdown
+			slog.Info("OTel tracing enabled",
+				"endpoint", cfg.Telemetry.OTelEndpoint,
+				"service", cfg.Telemetry.ServiceName)
+		}
+	}
+
+	if cfg.RateLimit.RequestsPerMinute > 0 {
+		opts.RateLimitRPS = float64(cfg.RateLimit.RequestsPerMinute) / 60.0
+		opts.RateLimitBurst = cfg.RateLimit.BurstSize
+		slog.Info("rate limiting enabled",
+			"rps", opts.RateLimitRPS,
+			"burst", opts.RateLimitBurst)
+	}
+
+	return opts, shutdown
 }
 
 // expandHome replaces a leading ~ with the user's home directory.

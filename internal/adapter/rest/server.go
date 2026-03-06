@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	apimw "github.com/stainedhead/ingatan/internal/adapter/rest/middleware"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // SystemService provides health status information.
@@ -28,20 +29,48 @@ type RouteRegistrar interface {
 	Register(r chi.Router)
 }
 
+// ServerOptions holds optional middleware and provider configuration for the router.
+// Zero value disables all optional features.
+type ServerOptions struct {
+	// OTelTracer instruments each request with an OTel trace span.
+	// nil = noop (no tracing).
+	OTelTracer trace.Tracer
+	// RateLimitRPS is the token replenishment rate (tokens per second) for
+	// per-IP rate limiting. 0 = disabled.
+	RateLimitRPS float64
+	// RateLimitBurst is the maximum burst size for the token bucket.
+	RateLimitBurst int
+}
+
 // NewRouter builds and returns the Chi router with all middleware and routes wired up.
 // jwtSecret and principalLookup are required for JWT authentication.
 // Pass a nil jwtSecret to disable auth (development only).
+// opts configures optional OTel tracing and rate limiting (zero value = disabled).
 // Additional domain handlers are registered via registrars.
-func NewRouter(jwtSecret []byte, lookup apimw.PrincipalLookup, svc SystemService, registrars ...RouteRegistrar) *chi.Mux {
+func NewRouter(jwtSecret []byte, lookup apimw.PrincipalLookup, svc SystemService, opts ServerOptions, registrars ...RouteRegistrar) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
 
+	// OTel tracing: applied at the outer level so all routes are instrumented.
+	if opts.OTelTracer != nil {
+		r.Use(apimw.OTelMiddleware(opts.OTelTracer))
+	}
+
+	// Rate limiting: applied at the outer level before authentication.
+	if opts.RateLimitRPS > 0 {
+		r.Use(apimw.RateLimitMiddleware(opts.RateLimitRPS, opts.RateLimitBurst))
+	}
+
 	// Authenticated API routes.
 	r.Route("/api/v1", func(r chi.Router) {
 		if jwtSecret != nil {
 			r.Use(apimw.JWTMiddleware(jwtSecret, lookup))
+		}
+		// Enrich the active span with principal.id after JWT resolves the principal.
+		if opts.OTelTracer != nil {
+			r.Use(apimw.PrincipalEnrichSpan)
 		}
 		r.Get("/health", healthHandler(svc))
 		for _, reg := range registrars {
