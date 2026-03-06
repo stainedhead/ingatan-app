@@ -6,6 +6,16 @@ Ships as a **single Go binary** with no external runtime dependencies. File-base
 
 ---
 
+## The Name
+
+*ingatan* comes from Bahasa Melayu, where it means **memory** or **remembrance** — the recollection of things past, held in mind.
+
+In Tagalog, *ingatan* carries a related but distinct meaning: **to keep safe**, to guard or preserve something with care. The shared root *ingat* runs through both languages, evoking mindfulness and attention.
+
+The name captures what this project does: it remembers, and it keeps knowledge safe.
+
+---
+
 ## Features
 
 - **Memory CRUD** — save, get, update, delete, list memories with automatic chunking
