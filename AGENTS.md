@@ -417,6 +417,15 @@ mv specs/memory-search specs/archive/
 
 ## Git Configuration
 
+### Commit Attribution
+
+**Do NOT add AI agent attribution to commits.** This applies to all AI coding agents including Claude Code and GitHub Copilot.
+
+- Do not add `Co-Authored-By: Claude ...` trailers
+- Do not add `Co-Authored-By: GitHub Copilot ...` trailers
+- Do not add any `Co-Authored-By` trailer referencing an AI agent or tool
+- Commit messages must attribute only human authors
+
 ### Required .gitignore
 
 ```gitignore
