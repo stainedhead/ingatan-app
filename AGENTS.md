@@ -1,520 +1,131 @@
 # AGENTS.md
 
-Rules and guidelines for AI agents working on the ingatan server.
-
-ingatan is a self-hosted memory server exposing MCP tools, a REST API, and an embedded
-web UI. It runs as a single Go binary on ARM64 and amd64 edge hardware with no external
-runtime dependencies (file-based storage, in-process HNSW + BM25 indexes).
+Rules and guidelines for AI agents working on the ingatan server — a self-hosted memory server exposing MCP tools, REST API, and embedded web UI. Single Go binary, file-based storage, in-process HNSW + BM25 indexes.
 
 ## Architecture: Clean Architecture
 
-This project follows Clean Architecture principles with strict dependency rules.
-
-### Layer Structure
+Dependencies flow **inward only**. Inner layers define interfaces; outer layers implement them.
 
 ```
-internal/
-├── domain/          # Entities and business rules (innermost, no dependencies)
-├── usecase/         # Application business logic (depends only on domain)
-├── adapter/         # Interface adapters: REST handlers, MCP handlers, WebUI (depends on usecase)
-│   ├── rest/        # Chi HTTP handlers + middleware
-│   ├── mcp/         # MCP tool handlers (mark3labs/mcp-go)
-│   └── webui/       # templ + HTMX templates
-└── infrastructure/  # External concerns: file storage, HNSW, BM25, embed/LLM providers
-
-cmd/
-└── ingatan/         # Application entry point, dependency injection
+domain → usecase → adapter → infrastructure
 ```
 
-### Dependency Rules
+- **domain/**: Pure entities and interfaces. No external imports except stdlib.
+- **usecase/**: Orchestrates domain. Defines repository/service interfaces.
+- **adapter/rest/**: Chi HTTP handlers + middleware. **adapter/mcp/**: mark3labs/mcp-go tools. **adapter/webui/**: templ + HTMX.
+- **infrastructure/**: File storage, HNSW, BM25, embed/LLM providers.
+- **cmd/ingatan/main.go**: Entry point + dependency injection.
 
-1. **Domain Layer**: Pure business entities and interfaces. No external imports except stdlib.
-2. **Use Case Layer**: Orchestrates domain entities. Defines repository/service interfaces.
-3. **Adapter Layer**: Implements interfaces defined in use case layer. Converts external data to domain models.
-4. **Infrastructure Layer**: Concrete implementations — file storage, HNSW index, BM25 index, embedding/LLM providers.
+Business logic lives in service layer, not in handlers. Repository interfaces defined in `usecase/`, not `infrastructure/`.
 
-Dependencies flow inward only. Inner layers define interfaces; outer layers implement them.
+## TDD: Red → Green → Refactor
 
----
+All three phases are mandatory. **Refactor is not optional.**
 
-## Development Methodology: TDD
+1. **Red**: Write a failing test. Verify it fails for the right reason.
+2. **Green**: Minimal code to pass. No premature optimization.
+3. **Refactor**: Eliminate duplication, improve naming, extract functions, simplify logic. Run tests after each change.
 
-Follow strict Test-Driven Development with the complete Red-Green-Refactor cycle.
+Tests in `<file>_test.go` (same package, white-box). Black-box: `<package>_test` package name.
 
-### Red-Green-Refactor Cycle
+## Build and Quality Gates
 
-**IMPORTANT:** All three phases are mandatory. Do not skip the refactor phase.
-
-1. **Red**: Write a failing test that defines expected behavior
-   - Test must fail for the right reason
-   - Verify the test actually exercises the code path
-
-2. **Green**: Write minimal code to make the test pass
-   - Focus on making tests pass, not on perfection
-   - Avoid premature optimization
-   - Get to green as quickly as possible
-
-3. **Refactor**: Improve code quality while keeping tests green (MANDATORY)
-   - **This phase is NOT optional** — refactoring must be done after tests pass
-   - Eliminate duplication (DRY principle)
-   - Improve naming and readability
-   - Extract functions/methods for clarity
-   - Simplify complex logic
-   - Apply design patterns where appropriate
-   - **Run tests after each refactoring step** to ensure they stay green
-   - Continue refactoring until code meets quality standards
-
-**The cycle is complete only after refactoring.** Moving to the next feature without refactoring accumulates technical debt.
-
-### Test Organization
-
-```
-<package>/
-├── <file>.go
-└── <file>_test.go    # Tests in same package for white-box testing
-```
-
-For black-box testing, use `<package>_test` package name.
-
-### Test Commands
+**Build to `bin/`, always run from there. Never use `go run`.**
 
 ```bash
-# Run all tests
-go test ./...
-
-# Run tests with coverage
-go test -cover ./...
-
-# Run specific test
-go test -run TestFunctionName ./path/to/package
-
-# Run tests with verbose output
-go test -v ./...
-
-# Generate coverage report
-go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
-```
-
----
-
-## Code Quality Standards
-
-### Build and Run
-
-**All builds output to the `bin/` directory. Always run the executable from there.**
-
-```bash
-# Build the executable to bin/
 go build -o bin/ingatan ./cmd/ingatan
-
-# Run the executable from bin/
 ./bin/ingatan --help
-./bin/ingatan --config ~/.ingatan/config.yaml
-
-# Build and run in one command
-go build -o bin/ingatan ./cmd/ingatan && ./bin/ingatan --help
 ```
 
-**Rules:**
-- Never run `go run ./cmd/ingatan` in production testing — always build first
-- The `bin/` directory is gitignored; binaries are never committed
-- Use `./bin/ingatan` for all manual testing and verification
-- Cross-compile for deployment targets:
-
+Cross-compile targets:
 ```bash
-# Primary ARM64 target (Raspberry Pi, Apple Silicon Linux)
 GOOS=linux GOARCH=arm64 go build -o bin/ingatan-arm64 ./cmd/ingatan
-
-# Secondary amd64 target
 GOOS=linux GOARCH=amd64 go build -o bin/ingatan-amd64 ./cmd/ingatan
-
-# macOS (development)
-GOOS=darwin GOARCH=arm64 go build -o bin/ingatan-darwin ./cmd/ingatan
 ```
 
-### Lint Commands
-
-```bash
-# Format code
-go fmt ./...
-
-# Vet for suspicious constructs
-go vet ./...
-
-# Run linter (golangci-lint v2 — see .golangci.yml)
-golangci-lint run
-
-# Tidy dependencies
-go mod tidy
-```
-
-### Idiomatic Go Practices
-
-- **Naming**: Use MixedCaps, not underscores. Acronyms stay uppercase (HTTPServer, not HttpServer).
-- **Errors**: Return errors as the last return value. Wrap errors with context using `fmt.Errorf("context: %w", err)`.
-- **Interfaces**: Define interfaces where they are used, not where implemented. Keep interfaces small.
-- **Packages**: Package names are lowercase, single words. Avoid `util`, `common`, `helpers`.
-- **Documentation**: All exported types and functions have doc comments starting with the name.
-
----
-
-## Quality Gates
-
-**All quality gates must pass before completing any development task.**
-
-### Pre-Completion Checklist
-
-Run these commands in order. All must succeed with zero errors:
-
-```bash
-# 1. Format code (auto-fixes formatting issues)
-go fmt ./...
-
-# 2. Tidy dependencies (ensures go.mod/go.sum are clean)
-go mod tidy
-
-# 3. Vet for suspicious constructs
-go vet ./...
-
-# 4. Run linter (catches bugs, style issues, complexity)
-golangci-lint run
-
-# 5. Run all tests
-go test ./...
-
-# 6. Build the executable to bin/
-go build -o bin/ingatan ./cmd/ingatan
-
-# 7. Verify the executable runs
-./bin/ingatan --help
-```
-
-### Gate Failure Policy
-
-- **Format/Tidy**: Auto-fix and continue
-- **Vet warnings**: Must fix before proceeding
-- **Lint errors**: Must fix before proceeding
-- **Lint warnings**: Fix if trivial, document if complex (create follow-up task)
-- **Test failures**: Must fix before proceeding
-- **Build failures**: Must fix before proceeding
-- **Run failures**: Must fix before proceeding (executable must run without panic/crash)
-
-### Quick Validation Script
-
-For rapid iteration, use this combined command:
-
+**Quality gate — all must pass before task complete:**
 ```bash
 go fmt ./... && go mod tidy && go vet ./... && golangci-lint run && go test ./... && go build -o bin/ingatan ./cmd/ingatan && ./bin/ingatan --help
 ```
 
-### golangci-lint Configuration (v2 format)
+Failure policy: format/tidy auto-fix; vet/lint errors/test failures/build failures — must fix before proceeding.
 
-**golangci-lint v2 is installed.** The v1 config format is not supported. Use this structure:
+**golangci-lint v2** (`.golangci.yml` — v2 format required):
+- `formatters:` section for `gofmt`/`goimports` (NOT under `linters:`)
+- No `gosimple` (absorbed into `staticcheck`)
+- `settings:` not `linters-settings:`
 
-```yaml
-version: "2"
+## Code Design Review (before every `git commit`)
 
-run:
-  timeout: 5m
-
-linters:
-  enable:
-    - errcheck
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - misspell
-    - gocritic
-    - bodyclose
-    - errorlint
-
-formatters:
-  enable:
-    - gofmt
-    - goimports
-
-settings:
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - style
-      - performance
-
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
-```
-
-Key v2 differences from v1:
-- Requires `version: "2"` at the top
-- Formatters (`gofmt`, `goimports`) go under `formatters:`, NOT under `linters:`
-- `gosimple` no longer exists (absorbed into `staticcheck`)
-- `linters-settings` is now `settings`
-
----
-
-## Code Design Review
-
-**A code design review is required before any `git commit`.** This is a mandatory step
-that happens after all quality gates pass but before code is committed to the repository.
-
-### Design Review Checklist
-
-For every set of changes, verify:
-
-**Architecture & Layers**
 - [ ] Dependencies flow inward only — domain has no external deps, usecase has no infrastructure deps
-- [ ] Business logic lives in the service layer, not in REST/MCP handlers
-- [ ] Repository interfaces are defined in `usecase/`, not `infrastructure/`
-- [ ] New types belong in the correct layer
-
-**Code Quality**
-- [ ] No TODO/FIXME left without a tracking task
-- [ ] Error handling is complete — no swallowed errors, no bare `_` ignoring important errors
-- [ ] All exported types and functions have doc comments
-- [ ] No unexported dead code (would be caught by lint, but double-check)
-- [ ] No hardcoded secrets, credentials, or environment-specific paths
-
-**Security**
+- [ ] Business logic in service layer, not handlers
+- [ ] Repository interfaces in `usecase/`, not `infrastructure/`
+- [ ] Error handling complete — no swallowed errors, no bare `_` on important errors
+- [ ] All exported types/functions have doc comments
+- [ ] No hardcoded secrets, credentials, or env-specific paths
 - [ ] No path traversal vulnerabilities in file operations
-- [ ] Auth middleware applied to all `/api/v1` routes
-- [ ] No sensitive data (tokens, secrets, passwords) in logs or error messages
-- [ ] User input validated before use in service layer
+- [ ] Auth middleware on all `/api/v1` routes; no sensitive data in logs
+- [ ] HNSW writes: `mu.Lock()`, reads: `mu.RLock()`. BM25: all ops `mu.Lock()`. File writes: atomic (temp + rename).
+- [ ] Happy path + error paths tested
 
-**Concurrency**
-- [ ] HNSW index: writes use `mu.Lock()`, reads use `mu.RLock()`
-- [ ] BM25 index: all operations use `mu.Lock()` (in-memory, not concurrent-safe)
-- [ ] File writes use atomic write (temp + rename) pattern
-- [ ] No shared mutable state without synchronization
-
-**Test Coverage**
-- [ ] Happy path tested
-- [ ] Error paths tested (not found, forbidden, invalid input)
-- [ ] Concurrent access tested where relevant (HNSW, BM25)
-
-### Fix Policy
-
-- **Critical issues** (security, data loss, race conditions, wrong layer dependencies): fix before commit, no exceptions
-- **Important issues** (missing error handling, architectural violations, missing tests): fix before commit
-- **Minor issues** (style, readability): fix if quick (< 5 min); otherwise create a follow-up task and note in commit message
-
-### Design Review in Agent Workflow
-
-After quality gates pass and before updating status/committing:
-
-1. Run through the design review checklist above
-2. Fix all critical and important issues found
-3. Re-run quality gates after any fixes
-4. Document any minor deferred issues in `specs/ingatan-v1.0/implementation-notes.md`
-5. Only then update `status.md` and proceed to commit
-
----
+Fix policy: critical/important issues (security, data loss, wrong layer) — fix before commit. Minor (style) — fix if < 5 min, otherwise create follow-up task.
 
 ## Agent Workflow
 
-When making changes:
+1. **Understand**: Read relevant docs and code first.
+2. **Plan**: Identify affected layers.
+3. **Red**: Write failing tests.
+4. **Green**: Minimal implementation.
+5. **Refactor**: Clean code, run tests after each change.
+6. **Quality Gates**: Run the combined gate command.
+7. **Design Review**: Run checklist, fix critical/important issues.
+8. **Document**: Update `documentation/` for architectural changes.
+9. **Update Status**: Update `specs/<feature>/status.md` — MANDATORY after every task.
+10. **Final Verify**: Re-run quality gates.
 
-1. **Understand**: Read relevant documentation and code before modifying
-2. **Plan**: Identify affected components across all architectural layers
-3. **Test First (Red)**: Write tests before implementation — tests must fail initially
-4. **Implement (Green)**: Make minimal changes to pass tests
-5. **Refactor (Mandatory)**: Improve code quality while keeping tests green
-   - Eliminate duplication
-   - Improve naming and structure
-   - Extract functions for clarity
-   - Simplify complex logic
-   - **Run tests after each refactoring change**
-6. **Quality Gates**: `go fmt`, `go mod tidy`, `go vet`, `golangci-lint run`, `go test ./...`, build, `--help`
-7. **Fix Issues**: Resolve any failures; if linter suggests improvements, refactor (return to step 5)
-8. **Design Review**: Run through the code design review checklist; fix critical/important issues
-9. **Document**: Update affected documentation files
-10. **Update Status**: Update `specs/ingatan-v1.0/status.md` — MANDATORY after every task
-11. **Final Verify**: Re-run quality gates to confirm all pass after any review fixes
+**CRITICAL**: `status.md` must be updated immediately after each task. Never mark complete until all gates AND design review pass.
 
-**CRITICAL**: After completing ANY task:
-1. Update `status.md` immediately — this is non-negotiable
-2. Never mark a task complete until all quality gates AND design review pass
-3. The executable must build to `bin/ingatan` and run without errors (`./bin/ingatan --help`)
+## Documentation
 
----
+- **`documentation/`**: Internal docs for developers/agents. Required: `product-summary.md`, `product-details.md`, `technical-details.md`. Update on architecturally significant changes.
+- **`support_docs/`**: User-facing guides, tutorials, troubleshooting.
+- **`README.md`**: Project overview for both audiences.
 
-## Documentation Maintenance
-
-### Documentation Structure
-
-**`documentation/` - Internal Product Documentation**
-- Audience: developers and AI agents
-- Required files: `product-summary.md`, `product-details.md`, `technical-details.md`
-- Update when making architecturally significant changes
-
-**`support_docs/` - User-Facing Documentation**
-- Audience: end users and operators
-- Content: how-to guides, quick start, troubleshooting, configuration reference
-
-**`README.md`** — project overview and quick start for both audiences
-
-### Documentation Standards
-
-- **Concise**: No filler words. Every sentence adds value.
-- **Current**: Update docs in the same commit as code changes.
-- **Structured**: Consistent headings, lists, and code blocks.
-
----
-
-## Feature Specification Workflow
-
-### Specs Directory Structure
+## Feature Specs Workflow
 
 ```
-specs/
-└── <feature-name>/
-    ├── spec.md                  # Feature specification and requirements
-    ├── status.md                # CRITICAL: Phase progress tracking (update after each task)
-    ├── plan.md                  # Implementation plan and architecture decisions
-    ├── tasks.md                 # Task breakdown with TDD steps
-    ├── research.md              # Research findings, API docs, examples
-    ├── data-dictionary.md       # Data structures, types, schemas
-    └── implementation-notes.md  # Decisions made, gotchas, deferred items
+specs/<feature-name>/
+  spec.md           # Requirements and acceptance criteria
+  status.md         # CRITICAL: phase tracking — update after every task
+  plan.md           # Implementation plan
+  tasks.md          # TDD task breakdown
+  research.md       # Findings and API notes
+  data-dictionary.md
+  implementation-notes.md
 ```
 
-**MANDATORY**: Update `status.md` after completing each task or phase.
-
-### Specs Workflow Rules
-
-- Create feature directory before starting any new feature work
-- Update `status.md` after EVERY task completion — not optional
-- Archive to `specs/archive/` when feature is fully implemented and stable
-- Specs are gitignored — local planning artifacts only
-
-### Example Feature Development Flow (ingatan)
-
-```bash
-# 1. Create feature spec directory
-mkdir -p specs/memory-search
-
-# 2. Start with spec.md - define requirements
-# 3. Initialize status.md with phases and 0% progress
-# 4. Research: explore existing code, validate dependencies
-# 5. Create data-dictionary.md, plan.md, tasks.md
-# 6. Implement following TDD: Red → Green → Refactor
-# 7. Design review before each commit
-# 8. Update status.md after each task
-# 9. Archive when complete
-mv specs/memory-search specs/archive/
-```
-
----
+- Create spec directory before starting work.
+- Update `status.md` after EVERY task — not optional.
+- Archive to `specs/archive/` when stable.
+- Specs are gitignored (local planning artifacts only).
 
 ## Agent Teams
 
-### Model Selection
+- Do not specify `model` when spawning teammates unless the user requests a specific model.
 
-- Default to the current/active model for all teammates
-- Do not specify the `model` parameter unless the user has requested a specific model
+## Git
 
----
+- **No AI attribution in commits.** No `Co-Authored-By: Claude ...` or similar trailers.
+- `bin/`, `specs/`, test artifacts, IDE files must be in `.gitignore`.
 
-## Git Configuration
-
-### Commit Attribution
-
-**Do NOT add AI agent attribution to commits.** This applies to all AI coding agents including Claude Code and GitHub Copilot.
-
-- Do not add `Co-Authored-By: Claude ...` trailers
-- Do not add `Co-Authored-By: GitHub Copilot ...` trailers
-- Do not add any `Co-Authored-By` trailer referencing an AI agent or tool
-- Commit messages must attribute only human authors
-
-### Required .gitignore
-
-```gitignore
-# Binaries
-bin/
-*.exe
-*.dll
-*.so
-*.dylib
-
-# Test artifacts
-*.test
-coverage.out
-coverage.html
-
-# Go workspace
-go.work
-go.work.sum
-
-# IDE and editor
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Build artifacts
-dist/
-
-# Environment and secrets
-.env
-.env.local
-*.pem
-*.key
-
-# Specs (local planning artifacts)
-specs/
-
-# Vendor (if not committing)
-# vendor/
-```
-
----
-
-## Project Structure Reference
+## Project Structure
 
 ```
-.
-├── CLAUDE.md                  # References AGENTS.md
-├── AGENTS.md                  # This file — agent guidelines
-├── README.md                  # Project overview and quick start
-├── .gitignore
-├── .golangci.yml              # golangci-lint v2 configuration
-├── go.mod
-├── go.sum
-├── config.example.yaml        # Annotated example configuration
-├── cmd/
-│   └── ingatan/
-│       └── main.go            # Entry point + dependency injection
-├── internal/
-│   ├── domain/                # Business entities (no external deps)
-│   │   ├── errors.go
-│   │   ├── principal.go
-│   │   ├── store.go
-│   │   ├── memory.go
-│   │   └── conversation.go
-│   ├── usecase/               # Service interfaces + business logic
-│   │   ├── memory/
-│   │   ├── store/
-│   │   ├── conversation/
-│   │   └── principal/
-│   ├── adapter/
-│   │   ├── rest/              # Chi HTTP handlers + middleware
-│   │   │   └── middleware/    # JWT auth, rate limiting, OTel
-│   │   ├── mcp/               # MCP tool handlers (mark3labs/mcp-go)
-│   │   └── webui/             # templ + HTMX templates
-│   └── infrastructure/
-│       ├── config/            # koanf configuration loading
-│       ├── storage/           # File-based JSON persistence
-│       ├── index/             # HNSW vector index + BM25 keyword index
-│       ├── ingest/            # Chunker, embedder, URL fetcher, file reader, PDF extractor
-│       ├── embed/             # Embedding provider adapters (OpenAI, Bedrock, Ollama)
-│       └── llm/               # LLM provider adapters (Anthropic, OpenAI, Bedrock, Ollama)
-├── documentation/             # Internal developer/agent docs
-├── support_docs/              # User-facing docs
-├── specs/                     # Feature specs (gitignored)
-└── bin/                       # Build output (gitignored)
+cmd/ingatan/main.go              # Entry point + DI
+internal/
+  domain/                        # entities: memory, store, principal, conversation, errors
+  usecase/memory/ store/ conversation/ principal/
+  adapter/rest/ mcp/ webui/
+  infrastructure/config/ storage/ index/ ingest/ embed/ llm/ backup/
+documentation/  support_docs/  specs/  bin/
 ```
