@@ -1,0 +1,27 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - misspell
+    - gocritic
+    - bodyclose
+    - errorlint
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+settings:
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

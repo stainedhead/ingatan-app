@@ -1,0 +1,70 @@
+# ingatan server example configuration
+# Copy to ~/.ingatan/config.yaml and edit as needed.
+# All values can be overridden with INGATAN_ prefixed environment variables.
+# e.g. INGATAN_SERVER_PORT=9000 overrides server.port
+
+server:
+  host: "0.0.0.0"
+  port: 8443
+  tls:
+    cert_file: ""          # Path to TLS certificate. Leave empty for plain HTTP (dev only).
+    key_file: ""           # Path to TLS private key.
+    client_ca: ""          # Path to CA cert for mTLS. Leave empty to disable mTLS.
+    min_version: "1.2"     # Minimum TLS version: "1.2" or "1.3"
+
+data_dir: "~/.ingatan/data"
+
+auth:
+  algorithm: "HS256"       # "HS256" or "RS256"
+  # secret: ""             # HS256 secret — set via INGATAN_AUTH_SECRET env var only
+  # public_key: ""         # RS256 public key PEM path
+  issuer: ""               # Optional JWT issuer claim to validate
+
+embedding:
+  provider: "openai"       # "openai" | "bedrock" | "ollama"
+  model: "text-embedding-3-small"
+  dimensions: 1536
+  # api_key: ""            # Set via INGATAN_EMBEDDING_API_KEY env var
+  # base_url: ""           # For ollama or openai-compatible endpoints
+
+llm:
+  provider: "anthropic"    # "anthropic" | "openai" | "bedrock" | "ollama"
+  model: "claude-3-5-haiku-latest"
+  # api_key: ""            # Set via INGATAN_LLM_API_KEY env var
+  # base_url: ""
+
+chunking:
+  strategy: "recursive"
+  chunk_size: 512           # Tokens (character-based approximation)
+  chunk_overlap: 64
+  max_content_bytes: 10485760  # 10MB
+
+ingest:
+  allowed_paths: []         # Directories allowed for memory_save_file. Empty = deny all file ingest.
+  max_content_bytes: 10485760
+  robots_txt_compliance: true
+
+conversation:
+  auto_summarize_message_threshold: 50
+  auto_summarize_token_estimate_threshold: 8000
+
+rate_limit:
+  requests_per_minute: 300
+  burst_size: 50
+
+backup:
+  s3:
+    enabled: false
+    bucket: ""
+    region: ""
+    prefix: "ingatan-backup/"
+    schedule: "0 2 * * *"   # 2am daily
+  git:
+    enabled: false
+    remote_url: ""
+    branch: "backup"
+    schedule: "0 3 * * *"   # 3am daily
+
+telemetry:
+  otel_endpoint: ""         # OTLP gRPC endpoint e.g. "localhost:4317". Empty = disabled.
+  service_name: "ingatan"
