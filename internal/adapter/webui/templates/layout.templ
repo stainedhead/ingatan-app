@@ -1,0 +1,44 @@
+package templates
+
+
+// Layout renders the full admin page shell with nav chrome.
+// content is the page body component injected into <main>.
+templ Layout(title string, content templ.Component) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } — ingatan Admin</title>
+			<link rel="icon" type="image/jpeg" href="/webui/static/ingatan-icon.jpg"/>
+			<link rel="stylesheet" href="/webui/static/pico.min.css"/>
+			<script src="/webui/static/htmx.min.js"></script>
+		</head>
+		<body>
+			<header class="container-fluid">
+				<nav>
+					<ul>
+						<li>
+						<img src="/webui/static/ingatan-icon.jpg" alt="ingatan" style="height:1.75rem;vertical-align:middle;margin-right:.5rem;border-radius:4px"/>
+						<strong>ingatan Admin</strong>
+					</li>
+					</ul>
+					<ul>
+						<li><a href="/webui/dashboard">Dashboard</a></li>
+						<li><a href="/webui/principals">Principals</a></li>
+						<li><a href="/webui/stores">Stores</a></li>
+						<li><a href="/webui/system">System</a></li>
+						<li>
+							<form method="POST" action="/webui/logout" style="margin:0">
+								<button type="submit" class="outline secondary" style="padding:.25rem .75rem;font-size:.85rem">Sign out</button>
+							</form>
+						</li>
+					</ul>
+				</nav>
+			</header>
+			<main class="container" style="padding-top:1.5rem">
+				@content
+			</main>
+		</body>
+	</html>
+}
