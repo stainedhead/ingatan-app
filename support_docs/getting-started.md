@@ -226,3 +226,32 @@ Once connected, the agent has access to all 23 MCP tools: memory management, sea
 - Enable TLS and mTLS for production deployments
 - Configure backup providers (S3 or git) for data safety
 - Set up an LLM provider for conversation summarization
+
+## Admin WebUI
+
+ingatan includes a browser-based admin console accessible from localhost only.
+
+### Accessing the WebUI
+
+1. Start ingatan. Look for this log line:
+   ```
+   INFO Admin WebUI enabled — localhost only url=http://localhost:8443/webui token=<64-char-hex>
+   ```
+2. Copy the token from the log.
+3. Open `http://localhost:8443/webui` in your browser (must be on the same machine).
+4. Paste the token into the login form and click **Sign in**.
+
+The token is generated fresh on every restart. Sessions last 24 hours and are lost on restart.
+
+### What You Can Do
+
+| Section | Actions |
+|---------|---------|
+| **Dashboard** | Overview of principal and store counts |
+| **Principals** | List, create, view details, reissue/revoke API keys |
+| **Stores** | List stores, view members, delete non-personal stores |
+| **System** | Trigger S3 or git backup manually |
+
+### Disabling the WebUI
+
+Set `webui.enabled: false` in your config file to disable the WebUI entirely.

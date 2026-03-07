@@ -1,0 +1,91 @@
+package templates
+
+
+// StoresListContent renders the store list table.
+templ StoresListContent(rows []StoreRow) {
+	<article>
+		<header><h2>Stores</h2></header>
+		<table>
+			<thead>
+				<tr>
+					<th>Name</th>
+					<th>Owner</th>
+					<th>Members</th>
+					<th></th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, row := range rows {
+					<tr>
+						<td>
+							<code>{ row.Name }</code>
+							if row.IsPersonal {
+								<small> (personal)</small>
+							}
+						</td>
+						<td>{ row.OwnerID }</td>
+						<td>{ itoa(row.MemberCount) }</td>
+						<td><a href={ templ.SafeURL("/webui/stores/" + row.Name) }>View</a></td>
+					</tr>
+				}
+				if len(rows) == 0 {
+					<tr>
+						<td colspan="4"><em>No stores found.</em></td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</article>
+}
+
+// StoreDetailContent renders the store detail with member table and delete form.
+templ StoreDetailContent(d StoreDetailData) {
+	<article>
+		<header><h2>Store: { d.Name }</h2></header>
+		<dl>
+			<dt>Owner</dt>
+			<dd>{ d.OwnerID }</dd>
+			if d.Description != "" {
+				<dt>Description</dt>
+				<dd>{ d.Description }</dd>
+			}
+			<dt>Created</dt>
+			<dd>{ d.CreatedAt }</dd>
+			if d.EmbeddingModel != "" {
+				<dt>Embedding Model</dt>
+				<dd>{ d.EmbeddingModel }</dd>
+			}
+		</dl>
+		<h3>Members</h3>
+		<table>
+			<thead>
+				<tr>
+					<th>Principal ID</th>
+					<th>Role</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, m := range d.Members {
+					<tr>
+						<td>{ m.StoreName }</td>
+						<td>{ m.Role }</td>
+					</tr>
+				}
+				if len(d.Members) == 0 {
+					<tr>
+						<td colspan="2"><em>No members.</em></td>
+					</tr>
+				}
+			</tbody>
+		</table>
+		if !d.IsPersonal {
+			<h3>Delete Store</h3>
+			<form method="POST" action={ templ.SafeURL("/webui/stores/" + d.Name + "/delete") }>
+				<p>Type the store name to confirm deletion. This cannot be undone.</p>
+				<input type="text" name="confirm" placeholder={ d.Name } required style="max-width:300px"/>
+				<button type="submit" class="contrast">Delete Store</button>
+			</form>
+		}
+		<p style="margin-top:2rem"><a href="/webui/stores">← Back to Stores</a></p>
+	</article>
+}

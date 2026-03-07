@@ -28,6 +28,15 @@ type Config struct {
 	RateLimit    RateLimitConfig `koanf:"rate_limit"`
 	Backup       BackupConfig
 	Telemetry    TelemetryConfig
+	WebUI        WebUIConfig
+}
+
+// WebUIConfig holds Admin WebUI settings.
+type WebUIConfig struct {
+	// Enabled controls whether the /webui/* routes are mounted.
+	// Defaults to true so a fresh install boots with the admin console available
+	// for first-user setup. Set to false to disable the WebUI entirely.
+	Enabled bool
 }
 
 // ServerConfig holds HTTP server settings.
@@ -146,6 +155,7 @@ func configDefaults() map[string]any {
 		"rate_limit.requests_per_minute":                       300,
 		"rate_limit.burst_size":                                50,
 		"telemetry.service_name":                               "ingatan",
+		"webui.enabled":                                        true,
 	}
 }
 

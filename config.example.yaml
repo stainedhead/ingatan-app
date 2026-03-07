@@ -68,3 +68,7 @@ backup:
 telemetry:
   otel_endpoint: ""         # OTLP gRPC endpoint e.g. "localhost:4317". Empty = disabled.
   service_name: "ingatan"
+
+webui:
+  enabled: true             # Admin WebUI at /webui. Localhost-only. Token printed on startup.
+                            # Set to false to disable the WebUI entirely.

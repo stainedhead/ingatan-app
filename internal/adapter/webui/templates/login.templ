@@ -1,0 +1,39 @@
+package templates
+
+// LoginPage renders the standalone login page (no nav chrome).
+templ LoginPage(errMsg string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>ingatan Admin — Sign in</title>
+			<link rel="stylesheet" href="/webui/static/pico.min.css"/>
+		</head>
+		<body>
+			<main class="container" style="max-width:420px;margin-top:6rem">
+				<article>
+					<header>
+						<h2>ingatan Admin</h2>
+					</header>
+					if errMsg != "" {
+						<p style="color:#c0392b">{ errMsg }</p>
+					}
+					<form method="POST" action="/webui/login">
+						<label>
+							Admin Token
+							<input
+								type="password"
+								name="token"
+								autofocus
+								required
+								placeholder="Paste startup token from server log"
+							/>
+						</label>
+						<button type="submit" class="contrast">Sign in</button>
+					</form>
+				</article>
+			</main>
+		</body>
+	</html>
+}

@@ -1,0 +1,27 @@
+package templates
+
+// DashboardContent renders the dashboard body (wrapped in Layout by the handler).
+templ DashboardContent(principalCount, storeCount int) {
+	<article>
+		<header>
+			<h2>System Overview</h2>
+		</header>
+		<div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1.5rem">
+			<div class="card" style="flex:1;min-width:140px;padding:1rem;border:1px solid var(--pico-muted-border-color);border-radius:var(--pico-border-radius)">
+				<strong style="font-size:2rem">{ itoa(principalCount) }</strong>
+				<div>Principals</div>
+			</div>
+			<div class="card" style="flex:1;min-width:140px;padding:1rem;border:1px solid var(--pico-muted-border-color);border-radius:var(--pico-border-radius)">
+				<strong style="font-size:2rem">{ itoa(storeCount) }</strong>
+				<div>Stores</div>
+			</div>
+		</div>
+		<nav>
+			<a href="/webui/principals">Manage Principals →</a>
+			&nbsp;&nbsp;
+			<a href="/webui/stores">Manage Stores →</a>
+			&nbsp;&nbsp;
+			<a href="/webui/system">System →</a>
+		</nav>
+	</article>
+}

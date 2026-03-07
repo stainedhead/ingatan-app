@@ -9,11 +9,11 @@
 
 ## Overall Progress
 
-**Status:** ✅ Complete
-**Completion:** 100% (All phases complete)
-**Estimated Total Time:** 14 weeks (was 18; M6 WebUI removed from ingatan-app scope)
+**Status:** ✅ Complete (M9 Admin WebUI done)
+**Completion:** 100% (M0–M9 all complete)
+**Estimated Total Time:** 16 weeks (M9 Admin WebUI re-enabled post-v1.0)
 **Time Spent:** ~16 hours
-**Current Phase:** Phase 8 - Release (M8) — DONE
+**Current Phase:** Phase 9 - Admin WebUI (M9) — Planning
 
 ---
 
@@ -28,7 +28,7 @@
 | **Phase 4: Ingest (M3)** | ✅ Complete | 6 | 6 | 100% | 2w |
 | **Phase 5: Stores & Auth (M4)** | ✅ Complete | 8 | 8 | 100% | 2w |
 | **Phase 6: Conversations (M5)** | ✅ Complete | 6 | 6 | 100% | 2w |
-| ~~**Phase 7: WebUI (M6)**~~ | 🚫 Dropped | — | — | — | — |
+| **Phase 9: Admin WebUI (M9)** | ✅ Complete | 21 | 21 | 100% | 2w |
 | **Phase 7: Hardening (M7)** | ✅ Complete | 6 | 6 | 100% | 2w |
 | **Phase 8: Release (M8)** | ✅ Complete | 4 | 4 | 100% | 2w |
 
@@ -269,13 +269,23 @@
 
 ---
 
-## ~~Phase 7: WebUI — M6~~ (Dropped)
+## Phase 9: Admin WebUI — M9 (Post-v1.0)
 
-**Status:** 🚫 Dropped — out of scope for ingatan-app
+**Status:** Planning
+**Progress:** 0/~20 tasks
+**Spec:** `specs/admin-webui/spec.md`
 
-**Decision:** The WebUI will be a separate application powered by the ingatan REST API.
-The embedded UI (templ + HTMX + `go:embed`) is no longer part of this binary.
-The REST API (complete as of M5) is the integration surface for the WebUI app.
+**Decision (2026-03-06):** Admin WebUI re-enabled. Scoped to admin-only, localhost-only
+access secured by a startup token. Uses templ + HTMX + go:embed. Configurable via
+`webui.enabled` (default: true). Provides principal management, store management,
+system health, and backup trigger. NOT a user-facing UI.
+
+**Key constraints:**
+- Localhost-only (`net.IP.IsLoopback()` on RemoteAddr)
+- Startup token (`crypto/rand` 32 bytes hex) printed to stdout on boot
+- Session cookie (in-memory store, 24h TTL, lost on restart)
+- No JWT middleware on `/webui/*` routes
+- `webui.enabled` config flag (default: true)
 
 ---
 
@@ -445,12 +455,14 @@ The REST API (complete as of M5) is the integration surface for the WebUI app.
 
 ## Next Steps
 
-**ingatan v1.0 is complete.** All phases M0–M8 implemented, tested, and documented.
+**M0–M8 complete.** M9 Admin WebUI in planning.
 
-Possible follow-on work:
-- Tag v1.0 release in git
+Active work:
+- **M9 Admin WebUI** — see `specs/admin-webui/` for full spec, plan, and tasks
+
+Post-M9 follow-on:
+- Tag v1.0 release in git (after M9 complete)
 - Deploy to target hardware (Raspberry Pi, edge ARM64 devices)
-- WebUI app (separate repository, consuming the ingatan REST API)
 - Bedrock embedding + LLM provider adapters (stubs exist; implementation deferred)
 - OTLP gRPC exporter wiring (config exists; only stdout + noop providers active)
 

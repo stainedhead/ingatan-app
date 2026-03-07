@@ -162,10 +162,20 @@ A single binary that agents and humans can deploy anywhere, providing persistent
 - [ ] TLS required; plaintext HTTP not supported; minimum TLS 1.2
 - [ ] `memory_save_file` path traversal (`../`) detection and rejection
 
-#### ~~FR-007: Embedded WebUI~~ (Dropped — separate application)
+#### FR-007: Admin WebUI (re-enabled as M9)
 
-The WebUI is implemented as a separate application consuming the ingatan REST API.
-The ingatan binary does not embed a UI. See `PRD-webui-v1.0` for WebUI scope.
+An embedded, admin-only browser UI served at `/webui`. Restricted to localhost access
+only. Secured by a one-time startup token (separate from JWT). Configurable via
+`webui.enabled` (default: true).
+
+**Screens:** Login, Dashboard (health/counts), Principals (CRUD), Stores (list/delete),
+System (config summary, backup trigger).
+
+**Security:** localhost-only middleware (`net.IP.IsLoopback()`); session cookie
+(`ingatan-admin-session`); startup token from `crypto/rand`; admin context for all
+service calls.
+
+See `specs/admin-webui/spec.md` for full detail.
 
 #### FR-007: Observability
 **Priority:** P2 (Medium)
@@ -384,7 +394,7 @@ None — this is the initial v1.0 implementation.
 | M3 — Ingest | `memory_save_url` (readability), `memory_save_file` (PDF + text), chunker, source provenance | Week 8 |
 | M4 — Stores & Auth | Store CRUD, access control enforcement, `principal_whoami`, `principal_list` | Week 10 |
 | M5 — Conversations | All 6 conversation tools, auto-summarization, `conversation_promote` | Week 12 |
-| ~~M6 — WebUI~~ | Dropped — separate WebUI app | — |
+| M9 — Admin WebUI | Admin-only embedded UI (localhost, startup token, templ+HTMX) | Post-v1.0 |
 | M7 — Hardening | OTel instrumentation, structured logging, rate limiting, backup, security review, mTLS | Week 14 |
 | M8 — v1.0 Release | Full integration test suite, ARM cross-compile, documentation, PRD sign-off | Week 16 |
 

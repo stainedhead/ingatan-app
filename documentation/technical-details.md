@@ -189,3 +189,49 @@ Build command: `go build -o bin/ingatan ./cmd/ingatan`
 | `github.com/openai/openai-go` | OpenAI embedding + LLM provider |
 | `go.opentelemetry.io/otel` | Distributed tracing |
 | `github.com/golang-jwt/jwt/v5` | JWT authentication |
+
+## Admin WebUI Adapter
+
+The Admin WebUI is a self-contained adapter in `internal/adapter/webui/` that provides a browser-based admin console.
+
+### Security Model
+
+- **Localhost-only**: `LocalhostOnly` middleware enforces `net.IP.IsLoopback()` on `RemoteAddr`; all non-loopback requests receive 403. No proxy trust headers are honoured.
+- **Startup token**: `crypto/rand` 32-byte hex, printed once at INFO level on boot, never persisted.
+- **Session cookie**: In-memory `SessionStore` (24h TTL, lost on restart). Cookie: `ingatan-admin-session`, HttpOnly, SameSite=Strict.
+- **No JWT**: The `/webui/*` sub-router has its own middleware chain. The JWT middleware from `rest.NewRouter` is NOT applied.
+
+### Routing Architecture
+
+```
+root chi.Router
+├── /api/v1/*    ← rest.NewRouter (JWT required)
+├── /mcp         ← MCP handler (JWT required)
+└── /webui/*     ← webui.Handler (LocalhostOnly + SessionAuth)
+     ├── /static/*         embedded htmx.min.js + pico.min.css
+     ├── /login (GET/POST) unauthenticated
+     ├── /logout (POST)    unauthenticated
+     └── /* (authenticated)
+          ├── /dashboard
+          ├── /principals, /principals/new, /principals/{id}
+          ├── /stores, /stores/{name}
+          └── /system, /system/backup
+```
+
+### Template Layer
+
+Templates use `github.com/a-h/templ` v0.3. Source files are in `internal/adapter/webui/templates/*.templ`; generated `*_templ.go` files are committed. Static assets (HTMX 2.0, Pico CSS 2.x) are embedded via `//go:embed static/*`.
+
+- `Layout(title, content templ.Component)` — base shell with Pico CSS nav
+- `LoginPage(errMsg)` — standalone login (no nav chrome)
+- `DashboardContent`, `PrincipalsListContent`, `PrincipalsNewContent`, `PrincipalCreatedContent`, `PrincipalDetailContent`, `KeyReissuedContent`, `StoresListContent`, `StoreDetailContent`, `SystemContent`, `ErrorContent`
+
+View model types (`PrincipalRow`, `StoreRow`, `PrincipalDetailData`, `StoreDetailData`, `MembershipRow`) are defined in `templates/viewmodels.go`; handlers convert domain types to view models before rendering.
+
+### Admin Context
+
+All WebUI service calls use a synthetic admin principal (`webui-admin`, `InstanceRoleAdmin`) constructed once in `NewHandler`. This bypasses store membership checks (the service layer honours `InstanceRoleAdmin`).
+
+### Enabling/Disabling
+
+Controlled by `webui.enabled` in config (default: `true`). When disabled, no routes are mounted and no startup token is generated.

@@ -17,6 +17,7 @@ import (
 	"github.com/stainedhead/ingatan/internal/adapter/mcp"
 	"github.com/stainedhead/ingatan/internal/adapter/rest"
 	apimw "github.com/stainedhead/ingatan/internal/adapter/rest/middleware"
+	"github.com/stainedhead/ingatan/internal/adapter/webui"
 	"github.com/stainedhead/ingatan/internal/domain"
 	"github.com/stainedhead/ingatan/internal/infrastructure/backup"
 	"github.com/stainedhead/ingatan/internal/infrastructure/config"
@@ -210,6 +211,18 @@ func run(configPath string) error {
 		backupHandler,
 	)
 	router.Mount("/mcp", mcpHTTP)
+
+	// Admin WebUI: mounted on the root router (outside /api/v1) with its own
+	// localhost + session-auth middleware. No JWT is applied to /webui/* routes.
+	if cfg.WebUI.Enabled {
+		webuiToken := webui.GenerateStartupToken()
+		webuiSessions := webui.NewSessionStore(24 * time.Hour)
+		webuiHandler := webui.NewHandler(webuiToken, webuiSessions, principalSvc, storeSvc, backupProviders)
+		webuiHandler.Register(router)
+		slog.Info("Admin WebUI enabled — localhost only",
+			"url", fmt.Sprintf("http://localhost:%d/webui", cfg.Server.Port),
+			"token", webuiToken)
+	}
 
 	// Slog request logger wraps the full router.
 	loggedRouter := apimw.SlogLogger(slog.Default())(router)

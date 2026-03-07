@@ -1,0 +1,166 @@
+package templates
+
+
+// PrincipalsListContent renders the principals list table.
+templ PrincipalsListContent(rows []PrincipalRow) {
+	<article>
+		<header style="display:flex;align-items:center;justify-content:space-between">
+			<h2 style="margin:0">Principals</h2>
+			<a href="/webui/principals/new" role="button" class="secondary outline" style="font-size:.85rem;padding:.3rem .8rem">+ New Principal</a>
+		</header>
+		<table>
+			<thead>
+				<tr>
+					<th>ID</th>
+					<th>Name</th>
+					<th>Type</th>
+					<th>Role</th>
+					<th></th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, row := range rows {
+					<tr>
+						<td><code>{ row.ID }</code></td>
+						<td>{ row.Name }</td>
+						<td>{ row.Type }</td>
+						<td>{ row.Role }</td>
+						<td><a href={ templ.SafeURL("/webui/principals/" + row.ID) }>View</a></td>
+					</tr>
+				}
+				if len(rows) == 0 {
+					<tr>
+						<td colspan="5"><em>No principals found.</em></td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</article>
+}
+
+// PrincipalsNewContent renders the create principal form.
+templ PrincipalsNewContent() {
+	<article style="max-width:520px">
+		<header><h2>New Principal</h2></header>
+		<form method="POST" action="/webui/principals">
+			<label>
+				Name
+				<input type="text" name="name" required/>
+			</label>
+			<label>
+				Type
+				<select name="type">
+					<option value="human">Human</option>
+					<option value="agent">Agent</option>
+				</select>
+			</label>
+			<label>
+				Role
+				<select name="role">
+					<option value="user">User</option>
+					<option value="admin">Admin</option>
+				</select>
+			</label>
+			<label>
+				Email (optional)
+				<input type="email" name="email"/>
+			</label>
+			<div style="display:flex;gap:.75rem;margin-top:1rem">
+				<button type="submit">Create Principal</button>
+				<a href="/webui/principals" role="button" class="secondary outline">Cancel</a>
+			</div>
+		</form>
+	</article>
+}
+
+// PrincipalCreatedContent shows the new principal with its API key (shown once).
+templ PrincipalCreatedContent(name, id, ptype, role, apiKey string) {
+	<article>
+		<header><h2>Principal Created</h2></header>
+		<dl>
+			<dt>Name</dt>
+			<dd>{ name }</dd>
+			<dt>ID</dt>
+			<dd><code>{ id }</code></dd>
+			<dt>Type</dt>
+			<dd>{ ptype }</dd>
+			<dt>Role</dt>
+			<dd>{ role }</dd>
+		</dl>
+		<h3>API Key — copy now, shown only once</h3>
+		<pre style="background:var(--pico-code-background);padding:1rem;border-radius:var(--pico-border-radius);overflow-x:auto;word-break:break-all">{ apiKey }</pre>
+		<p>Use this key as <code>Authorization: Bearer &lt;key&gt;</code> or via <code>POST /auth/token</code>.</p>
+		<a href="/webui/principals">← Back to Principals</a>
+	</article>
+}
+
+// PrincipalDetailContent renders the full principal detail page.
+templ PrincipalDetailContent(d PrincipalDetailData) {
+	<article>
+		<header><h2>{ d.Name }</h2></header>
+		<dl>
+			<dt>ID</dt>
+			<dd><code>{ d.ID }</code></dd>
+			<dt>Type</dt>
+			<dd>{ d.Type }</dd>
+			<dt>Role</dt>
+			<dd>{ d.Role }</dd>
+			if d.Email != "" {
+				<dt>Email</dt>
+				<dd>{ d.Email }</dd>
+			}
+			<dt>API Key</dt>
+			<dd>
+				if d.HasAPIKey {
+					<span style="color:green">&#10003; Active</span>
+				} else {
+					<span style="color:#888">None / revoked</span>
+				}
+			</dd>
+			<dt>Created</dt>
+			<dd>{ d.CreatedAt }</dd>
+		</dl>
+		<h3>Store Memberships</h3>
+		<table>
+			<thead>
+				<tr>
+					<th>Store</th>
+					<th>Role</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, m := range d.Memberships {
+					<tr>
+						<td>{ m.StoreName }</td>
+						<td>{ m.Role }</td>
+					</tr>
+				}
+				if len(d.Memberships) == 0 {
+					<tr>
+						<td colspan="2"><em>No store memberships.</em></td>
+					</tr>
+				}
+			</tbody>
+		</table>
+		<h3>API Key Management</h3>
+		<div style="display:flex;gap:.75rem;flex-wrap:wrap">
+			<form method="POST" action={ templ.SafeURL("/webui/principals/" + d.ID + "/reissue-key") }>
+				<button type="submit" class="secondary">Reissue API Key</button>
+			</form>
+			<form method="POST" action={ templ.SafeURL("/webui/principals/" + d.ID + "/revoke-key") }>
+				<button type="submit" class="contrast outline">Revoke API Key</button>
+			</form>
+		</div>
+		<p style="margin-top:2rem"><a href="/webui/principals">← Back to Principals</a></p>
+	</article>
+}
+
+// KeyReissuedContent shows the new API key after reissue.
+templ KeyReissuedContent(principalID, newKey string) {
+	<article>
+		<header><h2>New API Key Issued</h2></header>
+		<p>Copy now — this key will not be shown again.</p>
+		<pre style="background:var(--pico-code-background);padding:1rem;border-radius:var(--pico-border-radius);overflow-x:auto;word-break:break-all">{ newKey }</pre>
+		<a href={ templ.SafeURL("/webui/principals/" + principalID) }>← Back to Principal</a>
+	</article>
+}
