@@ -1,5 +1,7 @@
 # ingatan
 
+![ingatan](imgs/Ingatan-Cover-2.png)
+
 A self-hosted memory server for AI agents and humans. Stores, indexes, and retrieves knowledge as structured memories — enabling persistent context across conversations and sessions.
 
 Ships as a **single Go binary** with no external runtime dependencies. File-based storage, in-process HNSW vector index and BM25 keyword index. Targets ARM64 and amd64 edge hardware (Raspberry Pi, home servers, development machines).
